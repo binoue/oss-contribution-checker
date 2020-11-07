@@ -158,9 +158,10 @@ var (
 	// "Mounted on", "Size", "Used", "Avail", "Use%", "Inodes", "Used", "Avail", "Use%", "Type", "Filesystem"
 	// mountpoint, size, used, avail, usage, inodes, inodes_used, inodes_avail, inodes_usage, type, filesystem
 	customColumns = []CustomColumn{
-		{ID: "project", Name: "Project", SortIndex: 1, Width: 7},
+		{ID: "year", Name: "Year", SortIndex: 1, Width: 7},
 		{ID: "title", Name: "Title", SortIndex: 5, Width: 7},
-		{ID: "type", Name: "Type", SortIndex: 10},
+		{ID: "repo", Name: "Repo", SortIndex: 10},
+
 		// {ID: "mountpoint", Name: "Mounted on", SortIndex: 1},
 		// {ID: "size", Name: "Size", SortIndex: 12, Width: 7},
 		// {ID: "used", Name: "Used", SortIndex: 13, Width: 7},

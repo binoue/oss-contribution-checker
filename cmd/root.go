@@ -46,8 +46,6 @@ var (
 	// warns      = flag.Bool("warnings", false, "output all warnings to STDERR")
 	// version    = flag.Bool("version", false, "display version")
 )
-var githubIssues []GithubIssue
-
 var params struct {
 	summary bool
 	token   string
@@ -86,11 +84,14 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		err = showSummery(results)
-		if err != nil {
-			return err
+		if params.summary {
+			err = showSummery(results)
+			if err != nil {
+				return err
+			}
+			return nil
 		}
-		something()
+		showTable(results)
 		return nil
 	},
 }
@@ -110,11 +111,6 @@ func showSummery(searchResults []*github.IssuesSearchResult) error {
 		for _, i := range sr.Issues {
 			year := strconv.Itoa((i.CreatedAt).Year())
 			input := fmt.Sprintf("title: %v, year: %v, repositoryURL: %v, needToExclude: %v\n", *i.Title, year, *i.RepositoryURL, needToExclude(i))
-			githubIssues = append(githubIssues, GithubIssue{
-				title:   *i.Title,
-				year:    year,
-				project: *i.RepositoryURL,
-			})
 			output := blackfriday.Run([]byte(input), blackfriday.WithExtensions(blackfriday.Tables))
 			fmt.Println(string(output))
 			if needToExclude(i) {
@@ -219,6 +215,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&params.summary, "summary", false, "show summary")
 	rootCmd.Flags().StringVar(&params.token, "token", "", "github token")
 	rootCmd.Flags().StringVar(&params.account, "account", "", "your github account name")
+
 	rootCmd.Flags().StringVar(&params.theme, "theme", defaultThemeName(), "color themes: dark, light")
 	rootCmd.Flags().StringVar(&params.style, "style", defaultStyleName(), "style: unicode, ascii")
 	rootCmd.Flags().StringVar(&params.output, "output", "", "output fields: "+strings.Join(columnIDs(), ", "))
@@ -249,7 +246,22 @@ func init() {
 // 	}
 
 // 	// validate flags
-func something() {
+func showTable(searchResults []*github.IssuesSearchResult) {
+	var githubIssues []GithubIssue
+	for _, sr := range searchResults {
+		for _, i := range sr.Issues {
+			year := strconv.Itoa((i.CreatedAt).Year())
+			githubIssues = append(githubIssues, GithubIssue{
+				title:   *i.Title,
+				year:    year,
+				project: *i.RepositoryURL,
+			})
+			if needToExclude(i) {
+				continue
+			}
+		}
+	}
+
 	var err error
 	theme, err = loadTheme(params.theme)
 	if err != nil {
