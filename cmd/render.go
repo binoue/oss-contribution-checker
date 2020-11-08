@@ -8,6 +8,7 @@ import (
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
+	"github.com/muesli/termenv"
 )
 
 // renderTables renders all tables.
@@ -159,8 +160,8 @@ var (
 	// mountpoint, size, used, avail, usage, inodes, inodes_used, inodes_avail, inodes_usage, type, filesystem
 	customColumns = []CustomColumn{
 		{ID: "year", Name: "Year", SortIndex: 1, Width: 7},
-		{ID: "title", Name: "Title", SortIndex: 5, Width: 7},
-		{ID: "repo", Name: "Repo", SortIndex: 10},
+		{ID: "title", Name: "Title", SortIndex: 2},
+		{ID: "repo", Name: "Repo", SortIndex: 3},
 
 		// {ID: "mountpoint", Name: "Mounted on", SortIndex: 1},
 		// {ID: "size", Name: "Size", SortIndex: 12, Width: 7},
@@ -183,11 +184,13 @@ func customPrintTable(title string, g []GithubIssue, sortBy int, cols []int, sty
 	tab.Style().Options.SeparateColumns = true
 	tab.SetStyle(style)
 
-	twidth := tableWidth(cols, tab.Style().Options.SeparateColumns)
+	twidth := customTableWidth(cols, tab.Style().Options.SeparateColumns, customColumns)
+	// fmt.Printf("twidth: %v\n", twidth)
 	tab.SetColumnConfigs([]table.ColumnConfig{
-		{Number: 1, Hidden: !inColumns(cols, 1), WidthMax: int(float64(twidth) * 0.4)},
-		{Number: 2, Hidden: !inColumns(cols, 2), WidthMax: int(float64(twidth) * 0.4), Align: text.AlignRight, AlignHeader: text.AlignRight},
-		{Number: 3, Hidden: !inColumns(cols, 3), WidthMax: int(float64(twidth) * 0.4), Align: text.AlignRight, AlignHeader: text.AlignRight},
+		{Number: 1, Hidden: !inColumns(cols, 1)},
+		{Number: 2, Hidden: !inColumns(cols, 2), WidthMax: int(float64(twidth) * 0.7), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
+		{Number: 3, Hidden: !inColumns(cols, 3), WidthMax: int(float64(twidth) * 0.3), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
+
 		// {Number: 2, Hidden: !inColumns(cols, 2), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
 		// {Number: 3, Hidden: !inColumns(cols, 3), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
 		// {Number: 4, Hidden: !inColumns(cols, 4), Transformer: spaceTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
@@ -216,8 +219,7 @@ func customPrintTable(title string, g []GithubIssue, sortBy int, cols []int, sty
 
 	for _, v := range g {
 		tab.AppendRow([]interface{}{
-			// termenv.String(v.Mountpoint).Foreground(theme.colorBlue), // mounted on
-			v.year,
+			termenv.String(v.year).Foreground(theme.colorBlue),
 			v.title,
 			v.project,
 		})

@@ -251,10 +251,11 @@ func showTable(searchResults []*github.IssuesSearchResult) {
 	for _, sr := range searchResults {
 		for _, i := range sr.Issues {
 			year := strconv.Itoa((i.CreatedAt).Year())
+			s := strings.Split(*i.RepositoryURL, "/")
 			githubIssues = append(githubIssues, GithubIssue{
 				title:   *i.Title,
 				year:    year,
-				project: *i.RepositoryURL,
+				project: strings.Join(s[len(s)-2:], "/"),
 			})
 			if needToExclude(i) {
 				continue
@@ -282,7 +283,8 @@ func showTable(searchResults []*github.IssuesSearchResult) {
 	}
 
 	if len(columns) == 0 {
-		columns = []int{1, 2, 3, 4, 5, 10, 11}
+		columns = []int{1, 2, 3}
+		// columns = []int{1, 2, 3, 4, 5, 10, 11}
 		// no columns supplied, use defaults
 		// if *inodes {
 		// 	columns = []int{1, 6, 7, 8, 9, 10, 11}
@@ -309,33 +311,6 @@ func showTable(searchResults []*github.IssuesSearchResult) {
 		params.width = 80
 	}
 
-	// 	// read mount table
-	// 	m, warnings, err := mounts()
-	// 	if err != nil {
-	// 		fmt.Fprintln(os.Stderr, err)
-	// 		os.Exit(1)
-	// 	}
-
-	// print out warnings
-	// if *warns {
-	// 	for _, warning := range warnings {
-	// 		fmt.Fprintln(os.Stderr, warning)
-	// 	}
-	// }
-
-	// var dummyOutput []Mount
-
-	// // print JSON
-	// if params.json {
-	// 	err := renderJSON(dummyOutput)
-	// 	if err != nil {
-	// 		fmt.Fprintln(os.Stderr, err)
-	// 	}
-	// 	return
-	// }
-
-	// print tables
-	// renderTables(dummyOutput, columns, sortCol, style)
 	customRenderTables(githubIssues, columns, sortCol, style)
 }
 

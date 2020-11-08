@@ -241,7 +241,27 @@ func tableWidth(cols []int, separators bool) int {
 	twidth := int(params.width)
 	for i := 0; i < len(columns); i++ {
 		if inColumns(cols, i+1) {
+			// fmt.Printf("tableWidth:twidth:before: %v\n", twidth)
 			twidth -= 2 + sw + columns[i].Width
+			// fmt.Printf("tableWidth:twidth:after: %v\n", twidth)
+		}
+	}
+
+	return twidth
+}
+
+func customTableWidth(cols []int, separators bool, columns []CustomColumn) int {
+	var sw int
+	if separators {
+		sw = 1
+	}
+
+	twidth := int(params.width)
+	for i := 0; i < len(columns); i++ {
+		if inColumns(cols, i+1) {
+			// fmt.Printf("tableWidth:twidth:before: %v\n", twidth)
+			twidth -= 2 + sw + columns[i].Width
+			// fmt.Printf("tableWidth:twidth:after: %v\n", twidth)
 		}
 	}
 
