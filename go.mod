@@ -3,7 +3,7 @@ module github.com/binoue/oss-contribution-checker
 go 1.13
 
 require (
-	github.com/google/go-github/v32 v32.0.0
+	github.com/google/go-github/v32 v32.1.0
 	github.com/jedib0t/go-pretty/v6 v6.0.5
 	github.com/muesli/termenv v0.7.4
 	github.com/russross/blackfriday v2.0.0+incompatible
