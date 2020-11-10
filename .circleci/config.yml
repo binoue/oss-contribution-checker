@@ -1,0 +1,37 @@
+version: 2.1
+jobs:
+  hello:
+    docker:
+      - image: cimg/node:14.10.1 # the primary container, where your job's commands are run
+        auth:
+          username: mydockerhub-user
+          password: $DOCKERHUB_PASSWORD  # context / project UI env-var reference
+    steps:
+      - checkout # check out the code in the project directory
+      - run: echo "hello world" # run the `echo` command
+  renovate:
+    docker:
+      - image: cimg/node:14.10.1 # the primary container, where your job's commands are run
+        auth:
+          username: mydockerhub-user
+          password: $DOCKERHUB_PASSWORD  # context / project UI env-var reference
+    steps:
+      - checkout # check out the code in the project directory
+      - run: echo "hello world" # run the `echo` command
+
+
+workflows:
+  version: 2
+  main:
+    jobs:
+      - hello
+  renovate:
+    triggers:
+      - schedule:
+          cron: "0 * * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - renovate
