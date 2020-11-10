@@ -19,12 +19,16 @@ jobs:
       - checkout # check out the code in the project directory
       - run: echo "hello world" # run the `echo` command
 
+  renovate2:
+   machine: true
+   steps:
+     - run: docker run --rm renovate/renovate --platform github --token $PERSONAL_GITHUB_ACCOUNT_TOKEN binoue/oss-contribution-checker
 
 workflows:
   version: 2
   main:
     jobs:
-      - hello
+      - renovate2
   renovate:
     triggers:
       - schedule:
