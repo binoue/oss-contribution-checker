@@ -25,31 +25,15 @@ var (
 
 	term  = termenv.EnvColorProfile()
 	theme Theme
-
-	// all         = flag.Bool("all", false, "include pseudo, duplicate, inaccessible file systems")
-	// hideLocal   = flag.Bool("hide-local", false, "hide local devices")
-	// hideNetwork = flag.Bool("hide-network", false, "hide network devices")
-	// hideFuse    = flag.Bool("hide-fuse", false, "hide fuse devices")
-	// hideSpecial = flag.Bool("hide-special", false, "hide special devices")
-	// hideLoops   = flag.Bool("hide-loops", true, "hide loop devices")
-	// hideBinds   = flag.Bool("hide-binds", true, "hide bind mounts")
-	// hideFs      = flag.String("hide-fs", "", "hide specific filesystems, separated with commas")
-
-	// output   = flag.String("output", "", "output fields: "+strings.Join(columnIDs(), ", "))
-	// sortBy   = flag.String("sort", "mountpoint", "sort output by: "+strings.Join(columnIDs(), ", "))
-	// width    = flag.Uint("width", 0, "max output width")
-	// themeOpt = flag.String("theme", defaultThemeName(), "color themes: dark, light")
-	// styleOpt = flag.String("style", defaultStyleName(), "style: unicode, ascii")
-
-	// inodes     = flag.Bool("inodes", false, "list inode information instead of block usage")
-	// jsonOutput = flag.Bool("json", false, "output all devices in JSON format")
-	// warns      = flag.Bool("warnings", false, "output all warnings to STDERR")
-	// version    = flag.Bool("version", false, "display version")
 )
+
 var params struct {
 	summary bool
 	token   string
 	account string
+
+	yearSummary bool
+	repoSummary bool
 
 	theme  string
 	style  string
@@ -84,16 +68,28 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if params.summary {
-			err = showSummery(results)
+
+		if params.repoSummary {
+			// err = showSummery(results)
 			if err != nil {
 				return err
 			}
 			return nil
 		}
+		if params.yearSummary {
+			showYearSummaryTable(results)
+		}
+
 		showTable(results)
 		return nil
 	},
+}
+
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }
 
 func showSummery(searchResults []*github.IssuesSearchResult) error {
@@ -145,7 +141,7 @@ func needToExclude(issue *github.Issue) bool {
 	return false
 }
 
-func retrieveContributionData() ([]*github.IssuesSearchResult, error) {
+func retrieveContributionData() ([]GithubIssue, error) {
 	ctx := context.Background()
 	token := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: params.token},
@@ -172,14 +168,30 @@ func retrieveContributionData() ([]*github.IssuesSearchResult, error) {
 		opts.Page = resp.NextPage
 		time.Sleep(time.Duration(1))
 	}
-	return results, nil
-}
 
-func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	var githubIssues []GithubIssue
+	for _, sr := range results {
+		for _, i := range sr.Issues {
+			year := strconv.Itoa((i.CreatedAt).Year())
+			s := strings.Split(*i.RepositoryURL, "/")
+			var closed bool
+			if i.ClosedAt != nil {
+				closed = true
+			}
+			githubIssues = append(githubIssues, GithubIssue{
+				title:    *i.Title,
+				year:     year,
+				project:  strings.Join(s[len(s)-2:], "/"),
+				isPR:     i.IsPullRequest(),
+				isClosed: closed,
+			})
+			if needToExclude(i) {
+				continue
+			}
+		}
 	}
+
+	return githubIssues, nil
 }
 
 func setToken() error {
@@ -216,6 +228,11 @@ func init() {
 	rootCmd.Flags().StringVar(&params.token, "token", "", "github token")
 	rootCmd.Flags().StringVar(&params.account, "account", "", "your github account name")
 
+	rootCmd.Flags().BoolVar(&params.yearSummary, "year-summary", false, "show year summary")
+	rootCmd.Flags().BoolVar(&params.repoSummary, "repo-summary", false, "show repo summary")
+
+	// Took from duf
+
 	rootCmd.Flags().StringVar(&params.theme, "theme", defaultThemeName(), "color themes: dark, light")
 	rootCmd.Flags().StringVar(&params.style, "style", defaultStyleName(), "style: unicode, ascii")
 	rootCmd.Flags().StringVar(&params.output, "output", "", "output fields: "+strings.Join(columnIDs(), ", "))
@@ -225,44 +242,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&params.json, "json", false, "output all devices in JSON format")
 }
 
-// func main() {
-// 	flag.Parse()
-
-// 	if *version {
-// 		if len(CommitSHA) > 7 {
-// 			CommitSHA = CommitSHA[:7]
-// 		}
-// 		if Version == "" {
-// 			Version = "(built from source)"
-// 		}
-
-// 		fmt.Printf("duf %s", Version)
-// 		if len(CommitSHA) > 0 {
-// 			fmt.Printf(" (%s)", CommitSHA)
-// 		}
-
-// 		fmt.Println()
-// 		os.Exit(0)
-// 	}
-
-// 	// validate flags
-func showTable(searchResults []*github.IssuesSearchResult) {
-	var githubIssues []GithubIssue
-	for _, sr := range searchResults {
-		for _, i := range sr.Issues {
-			year := strconv.Itoa((i.CreatedAt).Year())
-			s := strings.Split(*i.RepositoryURL, "/")
-			githubIssues = append(githubIssues, GithubIssue{
-				title:   *i.Title,
-				year:    year,
-				project: strings.Join(s[len(s)-2:], "/"),
-			})
-			if needToExclude(i) {
-				continue
-			}
-		}
-	}
-
+func showTable(githubIssues []GithubIssue) {
 	var err error
 	theme, err = loadTheme(params.theme)
 	if err != nil {
@@ -283,14 +263,7 @@ func showTable(searchResults []*github.IssuesSearchResult) {
 	}
 
 	if len(columns) == 0 {
-		columns = []int{1, 2, 3}
-		// columns = []int{1, 2, 3, 4, 5, 10, 11}
-		// no columns supplied, use defaults
-		// if *inodes {
-		// 	columns = []int{1, 6, 7, 8, 9, 10, 11}
-		// } else {
-		// 	columns = []int{1, 2, 3, 4, 5, 10, 11}
-		// }
+		columns = []int{1, 2, 3, 4}
 	}
 
 	sortCol, err := stringToSortIndex(params.sort)
@@ -312,6 +285,10 @@ func showTable(searchResults []*github.IssuesSearchResult) {
 	}
 
 	customRenderTables(githubIssues, columns, sortCol, style)
+}
+
+func showYearSummaryTable(issues []GithubIssue) error {
+	return nil
 }
 
 // ---
