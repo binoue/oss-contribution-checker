@@ -11,71 +11,6 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// renderTables renders all tables.
-func renderTables(m []Mount, columns []int, sortCol int, style table.Style) {
-	// var local, network, fuse, special []Mount
-	// hideFsMap := parseHideFs(*hideFs)
-
-	// // sort/filter devices
-	// for _, v := range m {
-	// 	// skip hideFs
-	// 	if _, ok := hideFsMap[v.Fstype]; ok {
-	// 		continue
-	// 	}
-	// 	// skip autofs
-	// 	if v.Fstype == "autofs" {
-	// 		continue
-	// 	}
-	// 	// skip bind-mounts
-	// 	if *hideBinds && !*all && strings.Contains(v.Opts, "bind") {
-	// 		continue
-	// 	}
-	// 	// skip loop devices
-	// 	if *hideLoops && !*all && strings.HasPrefix(v.Device, "/dev/loop") {
-	// 		continue
-	// 	}
-	// 	// skip special devices
-	// 	if v.Blocks == 0 && !*all {
-	// 		continue
-	// 	}
-	// 	// skip zero size devices
-	// 	if v.BlockSize == 0 && !*all {
-	// 		continue
-	// 	}
-
-	// 	if isNetworkFs(v) {
-	// 		network = append(network, v)
-	// 		continue
-	// 	}
-	// 	if isFuseFs(v) {
-	// 		fuse = append(fuse, v)
-	// 		continue
-	// 	}
-	// 	if isSpecialFs(v) {
-	// 		special = append(special, v)
-	// 		continue
-	// 	}
-
-	// 	local = append(local, v)
-	// }
-
-	// // print tables
-	// if !*hideLocal || *all {
-	// 	printTable("local", local, sortCol, columns, style)
-	// }
-	// if !*hideNetwork || *all {
-	// 	printTable("network", network, sortCol, columns, style)
-	// }
-	// if !*hideFuse || *all {
-	// 	printTable("FUSE", fuse, sortCol, columns, style)
-	// }
-	// if !*hideSpecial || *all {
-	// 	printTable("special", special, sortCol, columns, style)
-	// }
-	var special []Mount
-	printTable("special", special, sortCol, columns, style)
-}
-
 // renderJSON encodes the JSON output and prints it.
 func renderJSON(m []Mount) error {
 	output, err := json.MarshalIndent(m, "", " ")
@@ -135,9 +70,12 @@ func parseHideFs(hideFs string) map[string]struct{} {
 }
 
 type GithubIssue struct {
-	title   string
-	project string
-	year    string
+	title    string
+	project  string
+	year     string
+	isPR     bool
+	isClosed bool
+	// isMerged bool
 }
 
 func customRenderJSON(g []GithubIssue) error {
@@ -145,7 +83,7 @@ func customRenderJSON(g []GithubIssue) error {
 }
 
 func customRenderTables(g []GithubIssue, columns []int, sortCol int, style table.Style) {
-	customPrintTable("special", g, sortCol, columns, style)
+	customPrintTable(g, sortCol, columns, style)
 }
 
 type CustomColumn struct {
@@ -156,28 +94,15 @@ type CustomColumn struct {
 }
 
 var (
-	// "Mounted on", "Size", "Used", "Avail", "Use%", "Inodes", "Used", "Avail", "Use%", "Type", "Filesystem"
-	// mountpoint, size, used, avail, usage, inodes, inodes_used, inodes_avail, inodes_usage, type, filesystem
 	customColumns = []CustomColumn{
 		{ID: "year", Name: "Year", SortIndex: 1, Width: 7},
-		{ID: "title", Name: "Title", SortIndex: 2},
+		{ID: "title", Name: "Title", SortIndex: 4},
 		{ID: "repo", Name: "Repo", SortIndex: 3},
-
-		// {ID: "mountpoint", Name: "Mounted on", SortIndex: 1},
-		// {ID: "size", Name: "Size", SortIndex: 12, Width: 7},
-		// {ID: "used", Name: "Used", SortIndex: 13, Width: 7},
-		// {ID: "avail", Name: "Avail", SortIndex: 14, Width: 7},
-		// {ID: "usage", Name: "Use%", SortIndex: 15, Width: 6},
-		// {ID: "inodes", Name: "Inodes", SortIndex: 16, Width: 7},
-		// {ID: "inodes_used", Name: "Used", SortIndex: 17, Width: 7},
-		// {ID: "inodes_avail", Name: "Avail", SortIndex: 18, Width: 7},
-		// {ID: "inodes_usage", Name: "Use%", SortIndex: 19, Width: 6},
-		// {ID: "type", Name: "Type", SortIndex: 10},
-		// {ID: "filesystem", Name: "Filesystem", SortIndex: 11},
+		{ID: "pr", Name: "PR", SortIndex: 2, Width: 3},
 	}
 )
 
-func customPrintTable(title string, g []GithubIssue, sortBy int, cols []int, style table.Style) {
+func customPrintTable(g []GithubIssue, sortBy int, cols []int, style table.Style) {
 	tab := table.NewWriter()
 	tab.SetAllowedRowLength(int(params.width))
 	tab.SetOutputMirror(os.Stdout)
@@ -185,11 +110,11 @@ func customPrintTable(title string, g []GithubIssue, sortBy int, cols []int, sty
 	tab.SetStyle(style)
 
 	twidth := customTableWidth(cols, tab.Style().Options.SeparateColumns, customColumns)
-	// fmt.Printf("twidth: %v\n", twidth)
 	tab.SetColumnConfigs([]table.ColumnConfig{
 		{Number: 1, Hidden: !inColumns(cols, 1)},
 		{Number: 2, Hidden: !inColumns(cols, 2), WidthMax: int(float64(twidth) * 0.7), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
 		{Number: 3, Hidden: !inColumns(cols, 3), WidthMax: int(float64(twidth) * 0.3), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
+		{Number: 4, Hidden: !inColumns(cols, 4)},
 
 		// {Number: 2, Hidden: !inColumns(cols, 2), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
 		// {Number: 3, Hidden: !inColumns(cols, 3), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
@@ -222,6 +147,7 @@ func customPrintTable(title string, g []GithubIssue, sortBy int, cols []int, sty
 			termenv.String(v.year).Foreground(theme.colorBlue),
 			v.title,
 			v.project,
+			isPR(v.isPR),
 		})
 	}
 
@@ -229,7 +155,8 @@ func customPrintTable(title string, g []GithubIssue, sortBy int, cols []int, sty
 		return
 	}
 
-	//tab.AppendFooter(table.Row{fmt.Sprintf("%d %s", tab.Length(), title)})
+	tab.SetTitle("Your %d Issues/PRs", tab.Length())
+
 	sortMode := table.Asc
 	if sortBy >= 12 {
 		sortMode = table.AscNumeric
@@ -241,65 +168,9 @@ func customPrintTable(title string, g []GithubIssue, sortBy int, cols []int, sty
 	return
 }
 
-// // printTable prints an individual table of mounts.
-// func printTable(title string, m []Mount, sortBy int, cols []int, style table.Style) {
-
-// 	for _, v := range m {
-// 		// spew.Dump(v)
-
-// 		var usage, inodeUsage float64
-// 		if v.Total > 0 {
-// 			usage = float64(v.Used) / float64(v.Total)
-// 			if usage > 1.0 {
-// 				usage = 1.0
-// 			}
-// 		}
-// 		if v.Inodes > 0 {
-// 			inodeUsage = float64(v.InodesUsed) / float64(v.Inodes)
-// 			if inodeUsage > 1.0 {
-// 				inodeUsage = 1.0
-// 			}
-// 		}
-
-// 		tab.AppendRow([]interface{}{
-// 			termenv.String(v.Mountpoint).Foreground(theme.colorBlue), // mounted on
-// 			v.Total,      // size
-// 			v.Used,       // used
-// 			v.Free,       // avail
-// 			usage,        // use%
-// 			v.Inodes,     // inodes
-// 			v.InodesUsed, // inodes used
-// 			v.InodesFree, // inodes avail
-// 			inodeUsage,   // inodes use%
-// 			termenv.String(v.Fstype).Foreground(theme.colorGray), // type
-// 			termenv.String(v.Device).Foreground(theme.colorGray), // filesystem
-// 			v.Total,      // size sorting helper
-// 			v.Used,       // used sorting helper
-// 			v.Free,       // avail sorting helper
-// 			usage,        // use% sorting helper
-// 			v.Inodes,     // inodes sorting helper
-// 			v.InodesUsed, // inodes used sorting helper
-// 			v.InodesFree, // inodes avail sorting helper
-// 			inodeUsage,   // inodes use% sorting helper
-// 		})
-// 	}
-
-// 	if tab.Length() == 0 {
-// 		return
-// 	}
-
-// 	suffix := "device"
-// 	if tab.Length() > 1 {
-// 		suffix = "devices"
-// 	}
-// 	tab.SetTitle("%d %s %s", tab.Length(), title, suffix)
-
-// 	//tab.AppendFooter(table.Row{fmt.Sprintf("%d %s", tab.Length(), title)})
-// 	sortMode := table.Asc
-// 	if sortBy >= 12 {
-// 		sortMode = table.AscNumeric
-// 	}
-
-// 	tab.SortBy([]table.SortBy{{Number: sortBy, Mode: sortMode}})
-// 	tab.Render()
-// }
+func isPR(b bool) string {
+	if b {
+		return "○"
+	}
+	return "-"
+}

@@ -24,3 +24,5 @@ TODO
 - リポジトリ別の件数
 - PRはマージされたかどうかの情報
 - 働きっぷりの可視化
+- render json
+- summary option(year. project)
