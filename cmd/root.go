@@ -28,6 +28,7 @@ var params struct {
 	account string
 	summary bool
 	repo    bool
+	exclude string // TODO: implement this option
 
 	theme  string
 	style  string
