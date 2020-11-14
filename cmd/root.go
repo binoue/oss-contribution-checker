@@ -250,7 +250,7 @@ func showTable(githubIssues []GithubIssue) error {
 			if params.repo {
 				columns = []int{3, 5, 6, 7, 8}
 			} else {
-				columns = []int{1, 2, 3, 4}
+				columns = []int{1, 5, 6, 7, 8}
 			}
 		} else {
 			columns = []int{1, 2, 3, 4}

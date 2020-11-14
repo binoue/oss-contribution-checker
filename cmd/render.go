@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
@@ -100,7 +101,7 @@ var (
 		{ID: "repo", Name: "Repo", SortIndex: 3},
 		{ID: "pr", Name: "PR", SortIndex: 2, Width: 3},
 
-		// Repo base summary
+		// Repo/Year base summary
 		{ID: "issue_num", Name: "issue count", SortIndex: 4, Width: 3},
 		{ID: "pr_num", Name: "PR count", SortIndex: 5, Width: 3},
 		{ID: "issue_percent", Name: "issue%", SortIndex: 6},
@@ -172,23 +173,44 @@ func customPrintTable(g []GithubIssue, sortBy int, cols []int, style table.Style
 	}
 
 	// count issues/pr based on year
-	yearPRMap := make(map[string]int)
-	yearIssueMap := make(map[string]int)
+	yearPRMap := make(map[int]int)
+	yearIssueMap := make(map[int]int)
+	startYear := 9999
+	endYear := 0
 	for _, v := range g {
-		if _, ok := yearPRMap[v.year]; !ok {
-			yearPRMap[v.year] = 0
+		year, _ := strconv.Atoi(v.year)
+		if year < startYear {
+			startYear = year
 		}
-		if _, ok := yearIssueMap[v.year]; !ok {
-			yearIssueMap[v.year] = 0
+		if endYear < year {
+			endYear = year
+		}
+		if _, ok := yearPRMap[year]; !ok {
+			yearPRMap[year] = 0
+		}
+		if _, ok := yearIssueMap[year]; !ok {
+			yearIssueMap[year] = 0
 		}
 
 		if v.isPR {
-			val, _ := yearPRMap[v.year]
-			yearPRMap[v.year] = val + 1
+			val, _ := yearPRMap[year]
+			yearPRMap[year] = val + 1
 			continue
 		}
-		val, _ := yearIssueMap[v.year]
-		yearIssueMap[v.year] = val + 1
+		val, _ := yearIssueMap[year]
+		yearIssueMap[year] = val + 1
+	}
+
+	// filling no data year
+	if startYear != 0 {
+		for i := startYear; i < endYear; i++ {
+			if _, ok := yearPRMap[i]; !ok {
+				yearPRMap[i] = 0
+			}
+			if _, ok := yearIssueMap[i]; !ok {
+				yearIssueMap[i] = 0
+			}
+		}
 	}
 
 	if params.repo && params.summary {
@@ -215,18 +237,27 @@ func customPrintTable(g []GithubIssue, sortBy int, cols []int, style table.Style
 			})
 		}
 	} else if params.summary {
-		maxYearPRCount := 0
-		maxYearIssueCount := 0
+		totalYearPRCount := 0
+		totalYearIssueCount := 0
 
 		for _, v := range yearPRMap {
-			if maxYearPRCount < v {
-				maxYearPRCount = v
-			}
+			totalYearPRCount += v
 		}
 		for _, v := range yearIssueMap {
-			if maxYearIssueCount < v {
-				maxYearIssueCount = v
-			}
+			totalYearIssueCount += v
+		}
+
+		for k, v := range yearPRMap {
+			tab.AppendRow([]interface{}{
+				k,               // year
+				"",              //title
+				"",              // project name
+				false,           // isPR
+				yearIssueMap[k], // issue_num
+				v,               // pr_num
+				float64(yearIssueMap[k]) / float64(totalYearIssueCount), // issue_percent
+				float64(yearPRMap[k]) / float64(totalYearPRCount),       // pr_percent
+			})
 		}
 	} else {
 		for _, v := range g {
@@ -243,7 +274,13 @@ func customPrintTable(g []GithubIssue, sortBy int, cols []int, style table.Style
 		return
 	}
 
-	tab.SetTitle("Your %d Issues/PRs", tab.Length())
+	if params.summary && params.repo {
+		tab.SetTitle("Your %d contributed projects", tab.Length())
+	} else if params.summary {
+		tab.SetTitle("Your yearly contribution")
+	} else {
+		tab.SetTitle("Your %d Issues/PRs", tab.Length())
+	}
 
 	sortMode := table.Asc
 	if sortBy >= 12 {
