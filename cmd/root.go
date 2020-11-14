@@ -20,9 +20,6 @@ import (
 )
 
 var (
-	Version   = ""
-	CommitSHA = ""
-
 	term  = termenv.EnvColorProfile()
 	theme Theme
 )
@@ -32,8 +29,7 @@ var params struct {
 	token   string
 	account string
 
-	yearSummary bool
-	repoSummary bool
+	repo bool
 
 	theme  string
 	style  string
@@ -69,19 +65,7 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		if params.repoSummary {
-			// err = showSummery(results)
-			if err != nil {
-				return err
-			}
-			return nil
-		}
-		if params.yearSummary {
-			showYearSummaryTable(results)
-		}
-
-		showTable(results)
-		return nil
+		return showTable(results)
 	},
 }
 
@@ -228,8 +212,7 @@ func init() {
 	rootCmd.Flags().StringVar(&params.token, "token", "", "github token")
 	rootCmd.Flags().StringVar(&params.account, "account", "", "your github account name")
 
-	rootCmd.Flags().BoolVar(&params.yearSummary, "year-summary", false, "show year summary")
-	rootCmd.Flags().BoolVar(&params.repoSummary, "repo-summary", false, "show repo summary")
+	rootCmd.Flags().BoolVar(&params.repo, "repo", false, "summary grouped by repo name")
 
 	// Took from duf
 
@@ -242,51 +225,57 @@ func init() {
 	rootCmd.Flags().BoolVar(&params.json, "json", false, "output all devices in JSON format")
 }
 
-func showTable(githubIssues []GithubIssue) {
+func showTable(githubIssues []GithubIssue) error {
 	var err error
 	theme, err = loadTheme(params.theme)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 
 	style, err := parseStyle(params.style)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 
 	columns, err := parseColumns(params.output)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 
 	if len(columns) == 0 {
-		columns = []int{1, 2, 3, 4}
+		if params.summary {
+			if params.repo {
+				columns = []int{3, 5, 6, 7, 8}
+			} else {
+				columns = []int{1, 2, 3, 4}
+			}
+		} else {
+			columns = []int{1, 2, 3, 4}
+		}
 	}
 
 	sortCol, err := stringToSortIndex(params.sort)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 
 	// detect terminal width
 	isTerminal := terminal.IsTerminal(int(os.Stdout.Fd()))
 	if isTerminal && params.width == 0 {
 		w, _, err := terminal.GetSize(int(os.Stdout.Fd()))
-		if err == nil {
-			params.width = uint(w)
+		if err != nil {
+			return err
 		}
+		params.width = uint(w)
 	}
 	if params.width == 0 {
 		params.width = 80
 	}
 
 	customRenderTables(githubIssues, columns, sortCol, style)
-}
-
-func showYearSummaryTable(issues []GithubIssue) error {
 	return nil
 }

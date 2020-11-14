@@ -99,6 +99,12 @@ var (
 		{ID: "title", Name: "Title", SortIndex: 4},
 		{ID: "repo", Name: "Repo", SortIndex: 3},
 		{ID: "pr", Name: "PR", SortIndex: 2, Width: 3},
+
+		// Repo base summary
+		{ID: "issue_num", Name: "issue count", SortIndex: 4, Width: 3},
+		{ID: "pr_num", Name: "PR count", SortIndex: 5, Width: 3},
+		{ID: "issue_percent", Name: "issue%", SortIndex: 6},
+		{ID: "pr_percent", Name: "PR%", SortIndex: 7},
 	}
 )
 
@@ -115,6 +121,10 @@ func customPrintTable(g []GithubIssue, sortBy int, cols []int, style table.Style
 		{Number: 2, Hidden: !inColumns(cols, 2), WidthMax: int(float64(twidth) * 0.7), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
 		{Number: 3, Hidden: !inColumns(cols, 3), WidthMax: int(float64(twidth) * 0.3), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
 		{Number: 4, Hidden: !inColumns(cols, 4)},
+		{Number: 5, Hidden: !inColumns(cols, 5)},
+		{Number: 6, Hidden: !inColumns(cols, 6)},
+		{Number: 7, Hidden: !inColumns(cols, 7), Transformer: barTransformer, WidthMax: int(float64(twidth) * 0.35), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
+		{Number: 8, Hidden: !inColumns(cols, 8), Transformer: barTransformer, WidthMax: int(float64(twidth) * 0.35), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
 
 		// {Number: 2, Hidden: !inColumns(cols, 2), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
 		// {Number: 3, Hidden: !inColumns(cols, 3), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
@@ -142,13 +152,91 @@ func customPrintTable(g []GithubIssue, sortBy int, cols []int, style table.Style
 	}
 	tab.AppendHeader(headers)
 
+	// count issues/pr based on repo
+	repoPRMap := make(map[string]int)
+	repoIssueMap := make(map[string]int)
 	for _, v := range g {
-		tab.AppendRow([]interface{}{
-			termenv.String(v.year).Foreground(theme.colorBlue),
-			v.title,
-			v.project,
-			isPR(v.isPR),
-		})
+		if _, ok := repoPRMap[v.project]; !ok {
+			repoPRMap[v.project] = 0
+		}
+		if _, ok := repoIssueMap[v.project]; !ok {
+			repoIssueMap[v.project] = 0
+		}
+		if v.isPR {
+			val, _ := repoPRMap[v.project]
+			repoPRMap[v.project] = val + 1
+			continue
+		}
+		val, _ := repoIssueMap[v.project]
+		repoIssueMap[v.project] = val + 1
+	}
+
+	// count issues/pr based on year
+	yearPRMap := make(map[string]int)
+	yearIssueMap := make(map[string]int)
+	for _, v := range g {
+		if _, ok := yearPRMap[v.year]; !ok {
+			yearPRMap[v.year] = 0
+		}
+		if _, ok := yearIssueMap[v.year]; !ok {
+			yearIssueMap[v.year] = 0
+		}
+
+		if v.isPR {
+			val, _ := yearPRMap[v.year]
+			yearPRMap[v.year] = val + 1
+			continue
+		}
+		val, _ := yearIssueMap[v.year]
+		yearIssueMap[v.year] = val + 1
+	}
+
+	if params.repo && params.summary {
+		totalRepoPRCount := 0
+		totalRepoIssueCount := 0
+
+		for _, v := range repoPRMap {
+			totalRepoPRCount += v
+		}
+		for _, v := range repoIssueMap {
+			totalRepoIssueCount += v
+		}
+
+		for k, v := range repoPRMap {
+			tab.AppendRow([]interface{}{
+				"",              // year
+				"",              //title
+				k,               // project name
+				false,           // isPR
+				repoIssueMap[k], // issue_num
+				v,               // pr_num
+				float64(repoIssueMap[k]) / float64(totalRepoIssueCount), // issue_percent
+				float64(repoPRMap[k]) / float64(totalRepoPRCount),       // pr_percent
+			})
+		}
+	} else if params.summary {
+		maxYearPRCount := 0
+		maxYearIssueCount := 0
+
+		for _, v := range yearPRMap {
+			if maxYearPRCount < v {
+				maxYearPRCount = v
+			}
+		}
+		for _, v := range yearIssueMap {
+			if maxYearIssueCount < v {
+				maxYearIssueCount = v
+			}
+		}
+	} else {
+		for _, v := range g {
+			tab.AppendRow([]interface{}{
+				termenv.String(v.year).Foreground(theme.colorBlue),
+				v.title,
+				v.project,
+				isPR(v.isPR),
+			})
+		}
 	}
 
 	if tab.Length() == 0 {

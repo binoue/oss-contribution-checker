@@ -181,7 +181,7 @@ func spaceTransformer(val interface{}) string {
 func barTransformer(val interface{}) string {
 	usage := val.(float64)
 	s := termenv.String()
-	if usage > 0 {
+	if usage >= 0 {
 		if barWidth() > 0 {
 			bw := barWidth() - 2
 			s = termenv.String(fmt.Sprintf("[%s%s] %5.1f%%",
@@ -203,7 +203,6 @@ func barTransformer(val interface{}) string {
 	default:
 		s = s.Foreground(theme.colorGreen)
 	}
-
 	return s.String()
 }
 
