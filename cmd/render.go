@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,17 +10,6 @@ import (
 	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/muesli/termenv"
 )
-
-// renderJSON encodes the JSON output and prints it.
-func renderJSON(m []Mount) error {
-	output, err := json.MarshalIndent(m, "", " ")
-	if err != nil {
-		return fmt.Errorf("error formatting the json output: %s", err)
-	}
-
-	fmt.Println(string(output))
-	return nil
-}
 
 // parseColumns parses the supplied output flag into a slice of column indices.
 func parseColumns(cols string) ([]int, error) {
@@ -79,7 +67,14 @@ type GithubIssue struct {
 	// isMerged bool
 }
 
+// customRenderJSON encodes the JSON output and prints it.
 func customRenderJSON(g []GithubIssue) error {
+	// output, err := json.MarshalIndent(m, "", " ")
+	// if err != nil {
+	// 	return fmt.Errorf("error formatting the json output: %s", err)
+	// }
+
+	// fmt.Println(string(output))
 	return nil
 }
 
@@ -126,25 +121,6 @@ func customPrintTable(g []GithubIssue, sortBy int, cols []int, style table.Style
 		{Number: 6, Hidden: !inColumns(cols, 6)},
 		{Number: 7, Hidden: !inColumns(cols, 7), Transformer: barTransformer, WidthMax: int(float64(twidth) * 0.35), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
 		{Number: 8, Hidden: !inColumns(cols, 8), Transformer: barTransformer, WidthMax: int(float64(twidth) * 0.35), Align: text.AlignLeft, AlignHeader: text.AlignLeft},
-
-		// {Number: 2, Hidden: !inColumns(cols, 2), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
-		// {Number: 3, Hidden: !inColumns(cols, 3), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
-		// {Number: 4, Hidden: !inColumns(cols, 4), Transformer: spaceTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
-		// {Number: 5, Hidden: !inColumns(cols, 5), Transformer: barTransformer, AlignHeader: text.AlignCenter},
-		// {Number: 6, Hidden: !inColumns(cols, 6), Align: text.AlignRight, AlignHeader: text.AlignRight},
-		// {Number: 7, Hidden: !inColumns(cols, 7), Align: text.AlignRight, AlignHeader: text.AlignRight},
-		// {Number: 8, Hidden: !inColumns(cols, 8), Align: text.AlignRight, AlignHeader: text.AlignRight},
-		// {Number: 9, Hidden: !inColumns(cols, 9), Transformer: barTransformer, AlignHeader: text.AlignCenter},
-		// {Number: 10, Hidden: !inColumns(cols, 10), WidthMax: int(float64(twidth) * 0.2)},
-		// {Number: 11, Hidden: !inColumns(cols, 11), WidthMax: int(float64(twidth) * 0.4)},
-		// {Number: 12, Hidden: true}, // sortBy helper for size
-		// {Number: 13, Hidden: true}, // sortBy helper for used
-		// {Number: 14, Hidden: true}, // sortBy helper for avail
-		// {Number: 15, Hidden: true}, // sortBy helper for usage
-		// {Number: 16, Hidden: true}, // sortBy helper for inodes size
-		// {Number: 17, Hidden: true}, // sortBy helper for inodes used
-		// {Number: 18, Hidden: true}, // sortBy helper for inodes avail
-		// {Number: 19, Hidden: true}, // sortBy helper for inodes usage
 	})
 
 	headers := table.Row{}

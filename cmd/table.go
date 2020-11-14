@@ -2,11 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
-	"github.com/jedib0t/go-pretty/v6/table"
-	"github.com/jedib0t/go-pretty/v6/text"
 	"github.com/muesli/termenv"
 )
 
@@ -15,144 +12,6 @@ type Column struct {
 	Name      string
 	SortIndex int
 	Width     int
-}
-
-type Mount struct {
-	Device     string      `json:"device"`
-	DeviceType string      `json:"device_type"`
-	Mountpoint string      `json:"mount_point"`
-	Fstype     string      `json:"fs_type"`
-	Type       string      `json:"type"`
-	Opts       string      `json:"opts"`
-	Total      uint64      `json:"total"`
-	Free       uint64      `json:"free"`
-	Used       uint64      `json:"used"`
-	Inodes     uint64      `json:"inodes"`
-	InodesFree uint64      `json:"inodes_free"`
-	InodesUsed uint64      `json:"inodes_used"`
-	Blocks     uint64      `json:"blocks"`
-	BlockSize  uint64      `json:"block_size"`
-	Metadata   interface{} `json:"-"`
-}
-
-var (
-	// "Mounted on", "Size", "Used", "Avail", "Use%", "Inodes", "Used", "Avail", "Use%", "Type", "Filesystem"
-	// mountpoint, size, used, avail, usage, inodes, inodes_used, inodes_avail, inodes_usage, type, filesystem
-	columns = []Column{
-		{ID: "mountpoint", Name: "Mounted on", SortIndex: 1},
-		{ID: "size", Name: "Size", SortIndex: 12, Width: 7},
-		{ID: "used", Name: "Used", SortIndex: 13, Width: 7},
-		{ID: "avail", Name: "Avail", SortIndex: 14, Width: 7},
-		{ID: "usage", Name: "Use%", SortIndex: 15, Width: 6},
-		{ID: "inodes", Name: "Inodes", SortIndex: 16, Width: 7},
-		{ID: "inodes_used", Name: "Used", SortIndex: 17, Width: 7},
-		{ID: "inodes_avail", Name: "Avail", SortIndex: 18, Width: 7},
-		{ID: "inodes_usage", Name: "Use%", SortIndex: 19, Width: 6},
-		{ID: "type", Name: "Type", SortIndex: 10},
-		{ID: "filesystem", Name: "Filesystem", SortIndex: 11},
-	}
-)
-
-// printTable prints an individual table of mounts.
-func printTable(title string, m []Mount, sortBy int, cols []int, style table.Style) {
-	tab := table.NewWriter()
-	tab.SetAllowedRowLength(int(params.width))
-	tab.SetOutputMirror(os.Stdout)
-	tab.Style().Options.SeparateColumns = true
-	tab.SetStyle(style)
-
-	if barWidth() > 0 {
-		columns[4].Width = barWidth() + 7
-		columns[8].Width = barWidth() + 7
-	}
-	twidth := tableWidth(cols, tab.Style().Options.SeparateColumns)
-
-	tab.SetColumnConfigs([]table.ColumnConfig{
-		{Number: 1, Hidden: !inColumns(cols, 1), WidthMax: int(float64(twidth) * 0.4)},
-		{Number: 2, Hidden: !inColumns(cols, 2), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
-		{Number: 3, Hidden: !inColumns(cols, 3), Transformer: sizeTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
-		{Number: 4, Hidden: !inColumns(cols, 4), Transformer: spaceTransformer, Align: text.AlignRight, AlignHeader: text.AlignRight},
-		{Number: 5, Hidden: !inColumns(cols, 5), Transformer: barTransformer, AlignHeader: text.AlignCenter},
-		{Number: 6, Hidden: !inColumns(cols, 6), Align: text.AlignRight, AlignHeader: text.AlignRight},
-		{Number: 7, Hidden: !inColumns(cols, 7), Align: text.AlignRight, AlignHeader: text.AlignRight},
-		{Number: 8, Hidden: !inColumns(cols, 8), Align: text.AlignRight, AlignHeader: text.AlignRight},
-		{Number: 9, Hidden: !inColumns(cols, 9), Transformer: barTransformer, AlignHeader: text.AlignCenter},
-		{Number: 10, Hidden: !inColumns(cols, 10), WidthMax: int(float64(twidth) * 0.2)},
-		{Number: 11, Hidden: !inColumns(cols, 11), WidthMax: int(float64(twidth) * 0.4)},
-		{Number: 12, Hidden: true}, // sortBy helper for size
-		{Number: 13, Hidden: true}, // sortBy helper for used
-		{Number: 14, Hidden: true}, // sortBy helper for avail
-		{Number: 15, Hidden: true}, // sortBy helper for usage
-		{Number: 16, Hidden: true}, // sortBy helper for inodes size
-		{Number: 17, Hidden: true}, // sortBy helper for inodes used
-		{Number: 18, Hidden: true}, // sortBy helper for inodes avail
-		{Number: 19, Hidden: true}, // sortBy helper for inodes usage
-	})
-
-	headers := table.Row{}
-	for _, v := range columns {
-		headers = append(headers, v.Name)
-	}
-	tab.AppendHeader(headers)
-
-	for _, v := range m {
-		// spew.Dump(v)
-
-		var usage, inodeUsage float64
-		if v.Total > 0 {
-			usage = float64(v.Used) / float64(v.Total)
-			if usage > 1.0 {
-				usage = 1.0
-			}
-		}
-		if v.Inodes > 0 {
-			inodeUsage = float64(v.InodesUsed) / float64(v.Inodes)
-			if inodeUsage > 1.0 {
-				inodeUsage = 1.0
-			}
-		}
-
-		tab.AppendRow([]interface{}{
-			termenv.String(v.Mountpoint).Foreground(theme.colorBlue), // mounted on
-			v.Total,      // size
-			v.Used,       // used
-			v.Free,       // avail
-			usage,        // use%
-			v.Inodes,     // inodes
-			v.InodesUsed, // inodes used
-			v.InodesFree, // inodes avail
-			inodeUsage,   // inodes use%
-			termenv.String(v.Fstype).Foreground(theme.colorGray), // type
-			termenv.String(v.Device).Foreground(theme.colorGray), // filesystem
-			v.Total,      // size sorting helper
-			v.Used,       // used sorting helper
-			v.Free,       // avail sorting helper
-			usage,        // use% sorting helper
-			v.Inodes,     // inodes sorting helper
-			v.InodesUsed, // inodes used sorting helper
-			v.InodesFree, // inodes avail sorting helper
-			inodeUsage,   // inodes use% sorting helper
-		})
-	}
-
-	if tab.Length() == 0 {
-		return
-	}
-
-	suffix := "device"
-	if tab.Length() > 1 {
-		suffix = "devices"
-	}
-	tab.SetTitle("%d %s %s", tab.Length(), title, suffix)
-
-	//tab.AppendFooter(table.Row{fmt.Sprintf("%d %s", tab.Length(), title)})
-	sortMode := table.Asc
-	if sortBy >= 12 {
-		sortMode = table.AscNumeric
-	}
-
-	tab.SortBy([]table.SortBy{{Number: sortBy, Mode: sortMode}})
-	tab.Render()
 }
 
 // sizeTransformer makes a size human-readable.
@@ -238,9 +97,9 @@ func tableWidth(cols []int, separators bool) int {
 	}
 
 	twidth := int(params.width)
-	for i := 0; i < len(columns); i++ {
+	for i := 0; i < len(customColumns); i++ {
 		if inColumns(cols, i+1) {
-			twidth -= 2 + sw + columns[i].Width
+			twidth -= 2 + sw + customColumns[i].Width
 		}
 	}
 
@@ -256,9 +115,7 @@ func customTableWidth(cols []int, separators bool, columns []CustomColumn) int {
 	twidth := int(params.width)
 	for i := 0; i < len(columns); i++ {
 		if inColumns(cols, i+1) {
-			// fmt.Printf("tableWidth:twidth:before: %v\n", twidth)
 			twidth -= 2 + sw + columns[i].Width
-			// fmt.Printf("tableWidth:twidth:after: %v\n", twidth)
 		}
 	}
 
@@ -293,7 +150,7 @@ func sizeToString(size uint64) (str string) {
 func stringToColumn(s string) (int, error) {
 	s = strings.ToLower(s)
 
-	for i, v := range columns {
+	for i, v := range customColumns {
 		if v.ID == s {
 			return i + 1, nil
 		}
@@ -306,7 +163,7 @@ func stringToColumn(s string) (int, error) {
 func stringToSortIndex(s string) (int, error) {
 	s = strings.ToLower(s)
 
-	for _, v := range columns {
+	for _, v := range customColumns {
 		if v.ID == s {
 			return v.SortIndex, nil
 		}
@@ -317,8 +174,8 @@ func stringToSortIndex(s string) (int, error) {
 
 // columnsIDs returns a slice of all column IDs.
 func columnIDs() []string {
-	s := make([]string, len(columns))
-	for i, v := range columns {
+	s := make([]string, len(customColumns))
+	for i, v := range customColumns {
 		s[i] = v.ID
 	}
 

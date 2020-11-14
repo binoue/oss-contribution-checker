@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/go-github/v32/github"
 	"github.com/muesli/termenv"
-	"github.com/russross/blackfriday"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/oauth2"
@@ -25,11 +24,10 @@ var (
 )
 
 var params struct {
-	summary bool
 	token   string
 	account string
-
-	repo bool
+	summary bool
+	repo    bool
 
 	theme  string
 	style  string
@@ -43,9 +41,6 @@ var params struct {
 type Token struct {
 	GithubToken string `yaml:"github_token"`
 }
-
-var excludeOrgs = []string{"cybozu"}
-var years = []string{"2017", "2018", "2019", "2020"}
 
 var rootCmd = &cobra.Command{
 	Use:   "oss-contribution-checker",
@@ -74,55 +69,6 @@ func Execute() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-}
-
-func showSummery(searchResults []*github.IssuesSearchResult) error {
-	issueCountMap := make(map[string]int)
-	for _, y := range years {
-		issueCountMap[y] = 0
-	}
-	prCountMap := make(map[string]int)
-	for _, y := range years {
-		prCountMap[y] = 0
-	}
-	excludeOrgs = append(excludeOrgs, params.account)
-
-	for _, sr := range searchResults {
-		for _, i := range sr.Issues {
-			year := strconv.Itoa((i.CreatedAt).Year())
-			input := fmt.Sprintf("title: %v, year: %v, repositoryURL: %v, needToExclude: %v\n", *i.Title, year, *i.RepositoryURL, needToExclude(i))
-			output := blackfriday.Run([]byte(input), blackfriday.WithExtensions(blackfriday.Tables))
-			fmt.Println(string(output))
-			if needToExclude(i) {
-				continue
-			}
-			if i.IsPullRequest() {
-				prCountMap[year] += 1
-				continue
-			}
-			issueCountMap[year] += 1
-		}
-	}
-
-	fmt.Printf("\nSummery:\n")
-	fmt.Println("# of Issues:")
-	for _, y := range years {
-		fmt.Printf("%v,%v\n", y, issueCountMap[y])
-	}
-	fmt.Println("# of PRs:")
-	for _, y := range years {
-		fmt.Printf("%v,%v\n", y, prCountMap[y])
-	}
-	return nil
-}
-
-func needToExclude(issue *github.Issue) bool {
-	for _, o := range excludeOrgs {
-		if strings.Contains(*issue.RepositoryURL, o) {
-			return true
-		}
-	}
-	return false
 }
 
 func retrieveContributionData() ([]GithubIssue, error) {
@@ -162,6 +108,7 @@ func retrieveContributionData() ([]GithubIssue, error) {
 			if i.ClosedAt != nil {
 				closed = true
 			}
+			// TODO: use exclude option
 			githubIssues = append(githubIssues, GithubIssue{
 				title:    *i.Title,
 				year:     year,
@@ -169,9 +116,6 @@ func retrieveContributionData() ([]GithubIssue, error) {
 				isPR:     i.IsPullRequest(),
 				isClosed: closed,
 			})
-			if needToExclude(i) {
-				continue
-			}
 		}
 	}
 
@@ -211,11 +155,9 @@ func init() {
 	rootCmd.Flags().BoolVar(&params.summary, "summary", false, "show summary")
 	rootCmd.Flags().StringVar(&params.token, "token", "", "github token")
 	rootCmd.Flags().StringVar(&params.account, "account", "", "your github account name")
-
 	rootCmd.Flags().BoolVar(&params.repo, "repo", false, "summary grouped by repo name")
 
 	// Took from duf
-
 	rootCmd.Flags().StringVar(&params.theme, "theme", defaultThemeName(), "color themes: dark, light")
 	rootCmd.Flags().StringVar(&params.style, "style", defaultStyleName(), "style: unicode, ascii")
 	rootCmd.Flags().StringVar(&params.output, "output", "", "output fields: "+strings.Join(columnIDs(), ", "))
@@ -278,4 +220,8 @@ func showTable(githubIssues []GithubIssue) error {
 
 	customRenderTables(githubIssues, columns, sortCol, style)
 	return nil
+}
+
+func defaultStyleName() string {
+	return "unicode"
 }
