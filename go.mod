@@ -6,8 +6,8 @@ require (
 	github.com/google/go-github/v32 v32.0.0
 	github.com/jedib0t/go-pretty/v6 v6.0.5
 	github.com/muesli/termenv v0.7.4
-	github.com/russross/blackfriday v2.0.0+incompatible
-	github.com/spf13/cobra v1.0.0
+	github.com/russross/blackfriday v2.0.0+incompatible // indirect
+	github.com/spf13/cobra v1.1.1
 	github.com/stretchr/testify v1.6.1 // indirect
 	golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9
 	golang.org/x/net v0.0.0-20200202094626-16171245cfb2 // indirect
