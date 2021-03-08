@@ -17,10 +17,6 @@ github.com/mattn/go-isatty
 github.com/mattn/go-runewidth
 # github.com/muesli/termenv v0.7.4
 github.com/muesli/termenv
-# github.com/russross/blackfriday v2.0.0+incompatible
-github.com/russross/blackfriday
-# github.com/shurcooL/sanitized_anchor_name v1.0.0
-github.com/shurcooL/sanitized_anchor_name
 # github.com/spf13/cobra v1.0.0
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.3
@@ -52,5 +48,5 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/urlfetch
-# gopkg.in/yaml.v2 v2.3.0
+# gopkg.in/yaml.v2 v2.4.0
 gopkg.in/yaml.v2
