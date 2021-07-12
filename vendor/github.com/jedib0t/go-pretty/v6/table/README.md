@@ -1,5 +1,5 @@
 # Table
-[![GoDoc](https://godoc.org/github.com/jedib0t/go-pretty/table?status.svg)](https://godoc.org/github.com/jedib0t/go-pretty/table)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jedib0t/go-pretty/v6/table.svg)](https://pkg.go.dev/github.com/jedib0t/go-pretty/v6/table)
 
 Pretty-print tables into ASCII/Unicode strings.
 
@@ -68,7 +68,7 @@ package main
 import (
     "os"
 
-    "github.com/jedib0t/go-pretty/table"
+    "github.com/jedib0t/go-pretty/v6/table"
 )
 
 func main() {
@@ -161,8 +161,7 @@ You can also roll your own style:
             UnfinishedRow:    " ~~~",
         },
         Color: table.ColorOptions{
-            AutoIndexColumn: nil,
-            FirstColumn:     nil,
+            IndexColumn:     text.Colors{text.BgCyan, text.FgBlack},
             Footer:          text.Colors{text.BgCyan, text.FgBlack},
             Header:          text.Colors{text.BgHiCyan, text.FgBlack},
             Row:             text.Colors{text.BgHiWhite, text.FgBlack},
@@ -187,6 +186,7 @@ Or you can use one of the ready-to-use Styles, and just make a few tweaks:
 ```golang
     t.SetStyle(table.StyleLight)
     t.Style().Color.Header = text.Colors{text.BgHiCyan, text.FgBlack}
+    t.Style().Color.IndexColumn = text.Colors{text.BgHiCyan, text.FgBlack}
     t.Style().Format.Footer = text.FormatLower
     t.Style().Options.DrawBorder = false
 ```
@@ -282,6 +282,18 @@ to get:
 +-----+------------+-----------+--------+-----------------------------+
 |     |            | TOTAL     |  10000 |                             |
 +-----+------------+-----------+--------+-----------------------------+
+```
+
+## Sorting
+
+Sorting can be done on one or more columns. The following code will make the
+rows be sorted first by "First Name" and then by "Last Name" (in case of similar
+"First Name" entries).
+```golang
+    t.SortBy([]table.SortBy{
+	    {Name: "First Name", Mode: table.Asc},
+	    {Name: "Last Name", Mode: table.Asc},
+    })
 ```
 
 ## Wrapping (or) Row/Column Width restrictions
