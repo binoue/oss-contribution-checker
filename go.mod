@@ -1,6 +1,6 @@
 module github.com/binoue/oss-contribution-checker
 
-go 1.13
+go 1.19
 
 require (
 	github.com/google/go-github/v32 v32.0.0
