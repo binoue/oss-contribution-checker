@@ -4,36 +4,52 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 
 	"github.com/lucasb-eyer/go-colorful"
 )
 
-var (
-	ErrInvalidColor = errors.New("invalid color")
-)
+// ErrInvalidColor gets returned when a color is invalid.
+var ErrInvalidColor = errors.New("invalid color")
 
+// Foreground and Background sequence codes.
 const (
 	Foreground = "38"
 	Background = "48"
 )
 
+// Color is an interface implemented by all colors that can be converted to an
+// ANSI sequence.
 type Color interface {
+	// Sequence returns the ANSI Sequence for the color.
 	Sequence(bg bool) string
 }
 
+// NoColor is a nop for terminals that don't support colors.
 type NoColor struct{}
+
+func (c NoColor) String() string {
+	return ""
+}
 
 // ANSIColor is a color (0-15) as defined by the ANSI Standard.
 type ANSIColor int
 
+func (c ANSIColor) String() string {
+	return ansiHex[c]
+}
+
 // ANSI256Color is a color (16-255) as defined by the ANSI Standard.
 type ANSI256Color int
+
+func (c ANSI256Color) String() string {
+	return ansiHex[c]
+}
 
 // RGBColor is a hex-encoded color, e.g. "#abcdef".
 type RGBColor string
 
+// ConvertToRGB converts a Color to a colorful.Color.
 func ConvertToRGB(c Color) colorful.Color {
 	var hex string
 	switch v := c.(type) {
@@ -49,67 +65,14 @@ func ConvertToRGB(c Color) colorful.Color {
 	return ch
 }
 
-func (p Profile) Convert(c Color) Color {
-	if p == Ascii {
-		return NoColor{}
-	}
-
-	switch v := c.(type) {
-	case ANSIColor:
-		return v
-
-	case ANSI256Color:
-		if p == ANSI {
-			return ansi256ToANSIColor(v)
-		}
-		return v
-
-	case RGBColor:
-		h, err := colorful.Hex(string(v))
-		if err != nil {
-			return nil
-		}
-		if p < TrueColor {
-			ac := hexToANSI256Color(h)
-			if p == ANSI {
-				return ansi256ToANSIColor(ac)
-			}
-			return ac
-		}
-		return v
-	}
-
-	return c
-}
-
-func (p Profile) Color(s string) Color {
-	if len(s) == 0 {
-		return nil
-	}
-
-	var c Color
-	if strings.HasPrefix(s, "#") {
-		c = RGBColor(s)
-	} else {
-		i, err := strconv.Atoi(s)
-		if err != nil {
-			return nil
-		}
-
-		if i < 16 {
-			c = ANSIColor(i)
-		} else {
-			c = ANSI256Color(i)
-		}
-	}
-
-	return p.Convert(c)
-}
-
-func (c NoColor) Sequence(bg bool) string {
+// Sequence returns the ANSI Sequence for the color.
+func (c NoColor) Sequence(_ bool) string {
 	return ""
 }
 
+// Sequence returns the ANSI Sequence for the color.
+//
+//nolint:mnd
 func (c ANSIColor) Sequence(bg bool) string {
 	col := int(c)
 	bgMod := func(c int) int {
@@ -120,11 +83,12 @@ func (c ANSIColor) Sequence(bg bool) string {
 	}
 
 	if col < 8 {
-		return fmt.Sprintf("%d", bgMod(col)+30)
+		return fmt.Sprintf("%d", bgMod(col)+30) //nolint:mnd
 	}
-	return fmt.Sprintf("%d", bgMod(col-8)+90)
+	return fmt.Sprintf("%d", bgMod(col-8)+90) //nolint:mnd
 }
 
+// Sequence returns the ANSI Sequence for the color.
 func (c ANSI256Color) Sequence(bg bool) string {
 	prefix := Foreground
 	if bg {
@@ -133,6 +97,7 @@ func (c ANSI256Color) Sequence(bg bool) string {
 	return fmt.Sprintf("%s;5;%d", prefix, c)
 }
 
+// Sequence returns the ANSI Sequence for the color.
 func (c RGBColor) Sequence(bg bool) string {
 	f, err := colorful.Hex(string(c))
 	if err != nil {
@@ -143,13 +108,25 @@ func (c RGBColor) Sequence(bg bool) string {
 	if bg {
 		prefix = Background
 	}
-	return fmt.Sprintf("%s;2;%d;%d;%d", prefix, uint8(f.R*255), uint8(f.G*255), uint8(f.B*255))
+	return fmt.Sprintf("%s;2;%d;%d;%d", prefix, uint8(f.R*255), uint8(f.G*255), uint8(f.B*255)) //nolint:mnd
 }
 
 func xTermColor(s string) (RGBColor, error) {
-	if len(s) != 24 {
+	if len(s) < 24 || len(s) > 25 {
 		return RGBColor(""), ErrInvalidColor
 	}
+
+	switch {
+	case strings.HasSuffix(s, string(BEL)):
+		s = strings.TrimSuffix(s, string(BEL))
+	case strings.HasSuffix(s, string(ESC)):
+		s = strings.TrimSuffix(s, string(ESC))
+	case strings.HasSuffix(s, ST):
+		s = strings.TrimSuffix(s, ST)
+	default:
+		return RGBColor(""), ErrInvalidColor
+	}
+
 	s = s[4:]
 
 	prefix := ";rgb:"
@@ -157,7 +134,6 @@ func xTermColor(s string) (RGBColor, error) {
 		return RGBColor(""), ErrInvalidColor
 	}
 	s = strings.TrimPrefix(s, prefix)
-	s = strings.TrimSuffix(s, "\a")
 
 	h := strings.Split(s, "/")
 	hex := fmt.Sprintf("#%s%s%s", h[0][:2], h[1][:2], h[2][:2])
@@ -171,7 +147,7 @@ func ansi256ToANSIColor(c ANSI256Color) ANSIColor {
 	h, _ := colorful.Hex(ansiHex[c])
 	for i := 0; i <= 15; i++ {
 		hb, _ := colorful.Hex(ansiHex[i])
-		d := h.DistanceLab(hb)
+		d := h.DistanceHSLuv(hb)
 
 		if d < md {
 			md = d
@@ -182,6 +158,7 @@ func ansi256ToANSIColor(c ANSI256Color) ANSIColor {
 	return ANSIColor(r)
 }
 
+//nolint:mnd
 func hexToANSI256Color(c colorful.Color) ANSI256Color {
 	v2ci := func(v float64) int {
 		if v < 48 {
@@ -218,8 +195,8 @@ func hexToANSI256Color(c colorful.Color) ANSI256Color {
 	// Return the one which is nearer to the original input rgb value
 	c2 := colorful.Color{R: float64(cr) / 255.0, G: float64(cg) / 255.0, B: float64(cb) / 255.0}
 	g2 := colorful.Color{R: float64(gv) / 255.0, G: float64(gv) / 255.0, B: float64(gv) / 255.0}
-	colorDist := c.DistanceLab(c2)
-	grayDist := c.DistanceLab(g2)
+	colorDist := c.DistanceHSLuv(c2)
+	grayDist := c.DistanceHSLuv(g2)
 
 	if colorDist <= grayDist {
 		return ANSI256Color(16 + ci)
