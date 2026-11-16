@@ -3,23 +3,25 @@ package table
 import (
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/jedib0t/go-pretty/v6/text"
 )
 
 // Render renders the Table in a human-readable "pretty" format. Example:
-//  ┌─────┬────────────┬───────────┬────────┬─────────────────────────────┐
-//  │   # │ FIRST NAME │ LAST NAME │ SALARY │                             │
-//  ├─────┼────────────┼───────────┼────────┼─────────────────────────────┤
-//  │   1 │ Arya       │ Stark     │   3000 │                             │
-//  │  20 │ Jon        │ Snow      │   2000 │ You know nothing, Jon Snow! │
-//  │ 300 │ Tyrion     │ Lannister │   5000 │                             │
-//  ├─────┼────────────┼───────────┼────────┼─────────────────────────────┤
-//  │     │            │ TOTAL     │  10000 │                             │
-//  └─────┴────────────┴───────────┴────────┴─────────────────────────────┘
+//
+//	┌─────┬────────────┬───────────┬────────┬─────────────────────────────┐
+//	│   # │ FIRST NAME │ LAST NAME │ SALARY │                             │
+//	├─────┼────────────┼───────────┼────────┼─────────────────────────────┤
+//	│   1 │ Arya       │ Stark     │   3000 │                             │
+//	│  20 │ Jon        │ Snow      │   2000 │ You know nothing, Jon Snow! │
+//	│ 300 │ Tyrion     │ Lannister │   5000 │                             │
+//	├─────┼────────────┼───────────┼────────┼─────────────────────────────┤
+//	│     │            │ TOTAL     │  10000 │                             │
+//	└─────┴────────────┴───────────┴────────┴─────────────────────────────┘
 func (t *Table) Render() string {
-	t.initForRender()
+	t.initForRender(renderModeDefault)
 
 	var out strings.Builder
 	if t.numColumns > 0 {
@@ -49,8 +51,9 @@ func (t *Table) Render() string {
 	return t.render(&out)
 }
 
+//gocyclo:ignore
 func (t *Table) renderColumn(out *strings.Builder, row rowStr, colIdx int, maxColumnLength int, hint renderHint) int {
-	numColumnsRenderer := 1
+	numColumnsRendered := 1
 
 	// when working on the first column, and autoIndex is true, insert a new
 	// column with the row number on it.
@@ -66,7 +69,7 @@ func (t *Table) renderColumn(out *strings.Builder, row rowStr, colIdx int, maxCo
 	}
 
 	// extract the text, convert-case if not-empty and align horizontally
-	mergeVertically := t.shouldMergeCellsVertically(colIdx, hint)
+	mergeVertically := t.shouldMergeCellsVerticallyAbove(colIdx, hint)
 	var colStr string
 	if mergeVertically {
 		// leave colStr empty; align will expand the column as necessary
@@ -78,40 +81,43 @@ func (t *Table) renderColumn(out *strings.Builder, row rowStr, colIdx int, maxCo
 	// if horizontal cell merges are enabled, look ahead and see how many cells
 	// have the same content and merge them all until a cell with a different
 	// content is found; override alignment to Center in this case
-	if t.getRowConfig(hint).AutoMerge && !hint.isSeparatorRow {
-		for idx := colIdx + 1; idx < len(row); idx++ {
-			if row[colIdx] != row[idx] {
+	rowConfig := t.getRowConfig(hint)
+	if rowConfig.AutoMerge && !hint.isSeparatorRow {
+		// get the real row to consider all lines in each column instead of just
+		// looking at the current "line"
+		rowUnwrapped := t.getRow(hint.rowNumber-1, hint)
+		for idx := colIdx + 1; idx < len(rowUnwrapped); idx++ {
+			if rowUnwrapped[colIdx] != rowUnwrapped[idx] {
 				break
 			}
-			align = text.AlignCenter
-			maxColumnLength += t.maxColumnLengths[idx] +
-				text.RuneCount(t.style.Box.PaddingRight+t.style.Box.PaddingLeft) +
-				text.RuneCount(t.style.Box.PaddingRight)
-			numColumnsRenderer++
+			align = rowConfig.getAutoMergeAlign()
+			maxColumnLength += t.getMaxColumnLengthForMerging(idx)
+			numColumnsRendered++
 		}
 	}
-	colStr = align.Apply(colStr, maxColumnLength)
 
 	// pad both sides of the column
 	if !hint.isSeparatorRow || (hint.isSeparatorRow && mergeVertically) {
-		colStr = t.style.Box.PaddingLeft + colStr + t.style.Box.PaddingRight
+		colStr = t.style.Box.PaddingLeft + align.Apply(colStr, maxColumnLength) + t.style.Box.PaddingRight
 	}
 
 	t.renderColumnColorized(out, colIdx, colStr, hint)
 
-	return colIdx + numColumnsRenderer
+	return colIdx + numColumnsRendered
 }
 
 func (t *Table) renderColumnAutoIndex(out *strings.Builder, hint renderHint) {
 	var outAutoIndex strings.Builder
-	outAutoIndex.Grow(t.maxColumnLengths[0])
+	if len(t.maxColumnLengths) > 0 {
+		outAutoIndex.Grow(t.maxColumnLengths[0])
+	}
 
 	if hint.isSeparatorRow {
-		numChars := t.autoIndexVIndexMaxLength + utf8.RuneCountInString(t.style.Box.PaddingLeft) +
-			utf8.RuneCountInString(t.style.Box.PaddingRight)
-		chars := t.style.Box.MiddleHorizontal
+		numChars := t.autoIndexVIndexMaxLength + text.StringWidthWithoutEscSequences(t.style.Box.PaddingLeft) +
+			text.StringWidthWithoutEscSequences(t.style.Box.PaddingRight)
+		chars := t.style.Box.middleHorizontal(hint.separatorType)
 		if hint.isAutoIndexColumn && hint.isHeaderOrFooterSeparator() {
-			chars = text.RepeatAndTrim(" ", len(t.style.Box.MiddleHorizontal))
+			chars = text.RepeatAndTrim(" ", len(chars))
 		}
 		outAutoIndex.WriteString(text.RepeatAndTrim(chars, numChars))
 	} else {
@@ -174,82 +180,91 @@ func (t *Table) renderColumnSeparator(out *strings.Builder, row rowStr, colIdx i
 }
 
 func (t *Table) renderLine(out *strings.Builder, row rowStr, hint renderHint) {
-	// if the output has content, it means that this call is working on line
-	// number 2 or more; separate them with a newline
-	if out.Len() > 0 {
-		out.WriteRune('\n')
-	}
-
-	// use a brand new strings.Builder if a row length limit has been set
+	// use a brand-new strings.Builder if a row length limit has been set
 	var outLine *strings.Builder
-	if t.allowedRowLength > 0 {
+	if t.style.Size.WidthMax > 0 {
 		outLine = &strings.Builder{}
 	} else {
+		if out.Len() > 0 {
+			out.WriteRune('\n')
+		}
 		outLine = out
 	}
-	// grow the strings.Builder to the maximum possible row length
-	outLine.Grow(t.maxRowLength)
 
+	// if a page break is pending, this line will be the first one on the new
+	// page if it is retained; render it (and decide on skipping it) that way,
+	// as a page boundary makes vertically merged cells visible again
+	startsPage := t.pendingPageBreak && hint.isRegularRow() && !hint.isBorderTop && !hint.isBorderBottom
+	if startsPage {
+		t.firstRowOfPage = true
+	}
+	t.renderLineContents(outLine, row, hint)
+
+	// merge the strings.Builder objects if a new one was created earlier
+	if outLine != out {
+		skip := t.shouldSkipClippedLine(outLine, hint)
+		if startsPage {
+			t.firstRowOfPage = false
+			if !skip {
+				t.renderPageBreak(out)
+			}
+		}
+		if skip {
+			return
+		}
+		if out.Len() > 0 {
+			out.WriteRune('\n')
+		}
+		t.renderLineMergeOutputs(out, outLine)
+	}
+	t.renderLineUpdatePager(out, hint)
+}
+
+func (t *Table) renderLineContents(out *strings.Builder, row rowStr, hint renderHint) {
+	out.Grow(t.maxRowLength)
 	nextColIdx := 0
-	t.renderMarginLeft(outLine, hint)
+	t.renderMarginLeft(out, hint)
 	for colIdx, maxColumnLength := range t.maxColumnLengths {
 		if colIdx != nextColIdx {
 			continue
 		}
-		nextColIdx = t.renderColumn(outLine, row, colIdx, maxColumnLength, hint)
+		nextColIdx = t.renderColumn(out, row, colIdx, maxColumnLength, hint)
 	}
-	t.renderMarginRight(outLine, hint)
+	t.renderMarginRight(out, hint)
+}
 
-	// merge the strings.Builder objects if a new one was created earlier
-	if outLine != out {
-		outLineStr := outLine.String()
-		if text.RuneCount(outLineStr) > t.allowedRowLength {
-			trimLength := t.allowedRowLength - utf8.RuneCountInString(t.style.Box.UnfinishedRow)
-			if trimLength > 0 {
-				out.WriteString(text.Trim(outLineStr, trimLength))
-				out.WriteString(t.style.Box.UnfinishedRow)
-			}
-		} else {
-			out.WriteString(outLineStr)
+func (t *Table) renderLineMergeOutputs(out *strings.Builder, outLine *strings.Builder) {
+	outLineStr := outLine.String()
+	if text.StringWidthWithoutEscSequences(outLineStr) > t.style.Size.WidthMax {
+		trimLength := t.style.Size.WidthMax - utf8.RuneCountInString(t.style.Box.UnfinishedRow)
+		if trimLength > 0 {
+			out.WriteString(text.Trim(outLineStr, trimLength))
+			out.WriteString(t.style.Box.UnfinishedRow)
 		}
+	} else {
+		out.WriteString(outLineStr)
 	}
+}
 
-	// if a page size has been set, and said number of lines has already
-	// been rendered, and the header is not being rendered right now, render
-	// the header all over again with a spacing line
-	if hint.isRegularRow() {
+func (t *Table) renderLineUpdatePager(out *strings.Builder, hint renderHint) {
+	t.firstRowOfPage = false
+	if hint.isRegularNonSeparatorRow() {
 		t.numLinesRendered++
-		if t.pageSize > 0 && t.numLinesRendered%t.pageSize == 0 && !hint.isLastLineOfLastRow() {
-			t.renderRowsFooter(out)
-			t.renderRowsBorderBottom(out)
-			out.WriteString(t.style.Box.PageSeparator)
-			t.renderRowsBorderTop(out)
-			t.renderRowsHeader(out)
+		if t.pager.size > 0 && t.numLinesRendered%t.pager.size == 0 && !hint.isLastLineOfLastRow() {
+			if t.style.Options.SkipEmptyRowsWhenClipped && t.style.Size.WidthMax > 0 {
+				// Wait for another retained line before creating a new page.
+				t.pendingPageBreak = true
+			} else {
+				t.renderPageBreak(out)
+			}
 		}
 	}
 }
 
 func (t *Table) renderMarginLeft(out *strings.Builder, hint renderHint) {
+	out.WriteString(t.directionModifier)
 	if t.style.Options.DrawBorder {
-		border := t.style.Box.Left
-		if hint.isBorderTop {
-			if t.title != "" {
-				border = t.style.Box.LeftSeparator
-			} else {
-				border = t.style.Box.TopLeft
-			}
-		} else if hint.isBorderBottom {
-			border = t.style.Box.BottomLeft
-		} else if hint.isSeparatorRow {
-			if t.autoIndex && hint.isHeaderOrFooterSeparator() {
-				border = t.style.Box.Left
-			} else if !t.autoIndex && t.shouldMergeCellsVertically(0, hint) {
-				border = t.style.Box.Left
-			} else {
-				border = t.style.Box.LeftSeparator
-			}
-		}
-
+		border := t.getBorderLeft(hint)
 		colors := t.getBorderColors(hint)
 		if colors.EscapeSeq() != "" {
 			out.WriteString(colors.Sprint(border))
@@ -261,23 +276,7 @@ func (t *Table) renderMarginLeft(out *strings.Builder, hint renderHint) {
 
 func (t *Table) renderMarginRight(out *strings.Builder, hint renderHint) {
 	if t.style.Options.DrawBorder {
-		border := t.style.Box.Right
-		if hint.isBorderTop {
-			if t.title != "" {
-				border = t.style.Box.RightSeparator
-			} else {
-				border = t.style.Box.TopRight
-			}
-		} else if hint.isBorderBottom {
-			border = t.style.Box.BottomRight
-		} else if hint.isSeparatorRow {
-			if t.shouldMergeCellsVertically(t.numColumns-1, hint) {
-				border = t.style.Box.Right
-			} else {
-				border = t.style.Box.RightSeparator
-			}
-		}
-
+		border := t.getBorderRight(hint)
 		colors := t.getBorderColors(hint)
 		if colors.EscapeSeq() != "" {
 			out.WriteString(colors.Sprint(border))
@@ -287,27 +286,35 @@ func (t *Table) renderMarginRight(out *strings.Builder, hint renderHint) {
 	}
 }
 
+func (t *Table) renderPageBreak(out *strings.Builder) {
+	t.pendingPageBreak = false
+	t.renderRowsFooter(out)
+	t.renderRowsBorderBottom(out)
+	out.WriteString(t.style.Box.PageSeparator)
+	t.renderRowsBorderTop(out)
+	t.renderRowsHeader(out)
+	t.firstRowOfPage = true
+}
+
 func (t *Table) renderRow(out *strings.Builder, row rowStr, hint renderHint) {
 	if len(row) > 0 {
+		// the first line of a row is never skipped, so a pending page break is
+		// certain to happen here; start the new page before wrapping the row
+		// so that vertical merges are worked out for the new page
+		if t.pendingPageBreak && hint.isRegularRow() {
+			t.renderPageBreak(out)
+		}
+
 		// fit every column into the allowedColumnLength/maxColumnLength limit
 		// and in the process find the max. number of lines in any column in
 		// this row
-		colMaxLines := 0
-		rowWrapped := make(rowStr, len(row))
-		for colIdx, colStr := range row {
-			widthEnforcer := t.columnConfigMap[colIdx].getWidthMaxEnforcer()
-			rowWrapped[colIdx] = widthEnforcer(colStr, t.maxColumnLengths[colIdx])
-			colNumLines := strings.Count(rowWrapped[colIdx], "\n") + 1
-			if colNumLines > colMaxLines {
-				colMaxLines = colNumLines
-			}
-		}
+		colMaxLines, rowWrapped := t.wrapRow(row, hint)
 
 		// if there is just 1 line in all columns, add the row as such; else
 		// split each column into individual lines and render them one-by-one
 		if colMaxLines == 1 {
 			hint.isLastLineOfRow = true
-			t.renderLine(out, row, hint)
+			t.renderLine(out, rowWrapped, hint)
 		} else {
 			// convert one row into N # of rows based on colMaxLines
 			rowLines := make([]rowStr, len(row))
@@ -337,95 +344,216 @@ func (t *Table) renderRowSeparator(out *strings.Builder, hint renderHint) {
 	} else if hint.isFooterRow && !t.style.Options.SeparateFooter {
 		return
 	}
+
 	hint.isSeparatorRow = true
-	t.renderLine(out, t.rowSeparator, hint)
+	separator := t.rowSeparatorStrings[hint.separatorType]
+	t.renderLine(out, t.rowSeparators[separator], hint)
 }
 
 func (t *Table) renderRows(out *strings.Builder, rows []rowStr, hint renderHint) {
-	for rowIdx, row := range rows {
+	interleaveVerticalMerge := t.shouldInterleaveVerticalMerge(hint)
+	stackFrom := 0
+	for rowIdx := 0; rowIdx < len(rows); rowIdx++ {
+		row := rows[rowIdx]
+
+		// stack rows that are being vertically merged into one shared block so
+		// the differing columns fill the merged cell's wrapped height instead
+		// of leaving blank lines below it (issue #261)
+		groupEnd := rowIdx + 1
+		if interleaveVerticalMerge && rowIdx >= stackFrom {
+			if end := t.verticalMergeGroupEnd(rows, rowIdx); end > groupEnd {
+				// if the block cannot be stacked, all its rows render one by one
+				stackFrom = end
+				if combined, ok := t.combineVerticalMergeGroup(rows, rowIdx, end); ok {
+					row, groupEnd = combined, end
+				}
+			}
+		}
+
 		hint.isFirstRow = rowIdx == 0
-		hint.isLastRow = rowIdx == len(rows)-1
+		hint.isLastRow = groupEnd == len(rows)
 		hint.rowNumber = rowIdx + 1
+		hint.rowGroupSize = groupEnd - rowIdx
 		t.renderRow(out, row, hint)
 
-		if (t.style.Options.SeparateRows && rowIdx < len(rows)-1) || // last row before footer
-			(t.separators[rowIdx] && rowIdx != len(rows)-1) { // manually added separator not after last row
-			hint.isFirstRow = false
-			t.renderRowSeparator(out, hint)
+		if t.shouldSeparateRows(rowIdx, len(rows)) {
+			hintSep := hint
+			hintSep.isFirstRow = false
+			hintSep.isSeparatorRow = true
+			if hintSep.isHeaderRow {
+				hintSep.separatorType = separatorTypeHeaderMiddle
+			} else if hintSep.isFooterRow {
+				hintSep.separatorType = separatorTypeFooterMiddle
+			} else {
+				hintSep.separatorType = separatorTypeRowMiddle
+			}
+			t.renderRowSeparator(out, hintSep)
 		}
+
+		// skip the rows that were stacked into the block rendered above
+		rowIdx = groupEnd - 1
 	}
 }
 
 func (t *Table) renderRowsBorderBottom(out *strings.Builder) {
-	t.renderRowSeparator(out, renderHint{isBorderBottom: true, isFooterRow: true})
+	if len(t.rowsFooter) > 0 {
+		t.renderRowSeparator(out, renderHint{
+			isBorderBottom: true,
+			isFooterRow:    true,
+			rowNumber:      len(t.rowsFooter),
+			separatorType:  separatorTypeFooterBottom,
+		})
+	} else {
+		t.renderRowSeparator(out, renderHint{
+			isBorderBottom: true,
+			isFooterRow:    false,
+			rowNumber:      len(t.rows),
+			separatorType:  separatorTypeRowBottom,
+		})
+	}
 }
 
 func (t *Table) renderRowsBorderTop(out *strings.Builder) {
-	t.renderRowSeparator(out, renderHint{isBorderTop: true, isHeaderRow: true})
+	st := separatorTypeHeaderTop
+	if t.title != "" {
+		st = separatorTypeTitleBottom
+	} else if len(t.rowsHeader) == 0 && !t.autoIndex {
+		st = separatorTypeRowTop
+	}
+
+	if len(t.rowsHeader) > 0 || t.autoIndex {
+		t.renderRowSeparator(out, renderHint{
+			isBorderTop:    true,
+			isHeaderRow:    true,
+			isSeparatorRow: true,
+			rowNumber:      0,
+			separatorType:  st,
+		})
+	} else {
+		t.renderRowSeparator(out, renderHint{
+			isBorderTop:    true,
+			isHeaderRow:    false,
+			isSeparatorRow: true,
+			rowNumber:      0,
+			separatorType:  st,
+		})
+	}
 }
 
 func (t *Table) renderRowsFooter(out *strings.Builder) {
 	if len(t.rowsFooter) > 0 {
-		t.renderRowSeparator(out, renderHint{
-			isFooterRow:    true,
-			isFirstRow:     true,
-			isSeparatorRow: true,
-		})
+		// Only add separator before footer if there are data rows.
+		// Otherwise, renderRowsHeader already added one.
+		if len(t.rows) > 0 {
+			t.renderRowSeparator(out, renderHint{
+				isFooterRow:    true,
+				isFirstRow:     true,
+				isSeparatorRow: true,
+				separatorType:  separatorTypeFooterTop,
+			})
+		}
 		t.renderRows(out, t.rowsFooter, renderHint{isFooterRow: true})
 	}
 }
 
 func (t *Table) renderRowsHeader(out *strings.Builder) {
 	if len(t.rowsHeader) > 0 || t.autoIndex {
-		if len(t.rowsHeader) > 0 {
-			t.renderRows(out, t.rowsHeader, renderHint{isHeaderRow: true})
-		} else if t.autoIndex {
-			t.renderRow(out, t.getAutoIndexColumnIDs(), renderHint{isAutoIndexRow: true, isHeaderRow: true})
-		}
-		t.renderRowSeparator(out, renderHint{
+		hintSeparator := renderHint{
 			isHeaderRow:    true,
 			isLastRow:      true,
 			isSeparatorRow: true,
-			rowNumber:      len(t.rowsHeader),
-		})
+			separatorType:  separatorTypeHeaderMiddle,
+		}
+
+		if len(t.rowsHeader) > 0 {
+			t.renderRows(out, t.rowsHeader, renderHint{isHeaderRow: true})
+			hintSeparator.rowNumber = len(t.rowsHeader)
+		} else if t.autoIndex {
+			t.renderRow(out, t.getAutoIndexColumnIDs(), renderHint{isAutoIndexRow: true, isHeaderRow: true})
+			hintSeparator.rowNumber = 1
+		}
+
+		// Only add separator after header if there are data rows or footer rows.
+		// Otherwise, the bottom border is rendered directly.
+		if len(t.rows) > 0 || len(t.rowsFooter) > 0 || !t.style.Options.DoNotRenderSeparatorWhenEmpty {
+			hintSeparator.separatorType = separatorTypeHeaderBottom
+			t.renderRowSeparator(out, hintSeparator)
+		}
 	}
 }
 
 func (t *Table) renderTitle(out *strings.Builder) {
 	if t.title != "" {
+		colors := t.style.Title.Colors
+		colorsBorder := t.getBorderColors(renderHint{isTitleRow: true})
 		rowLength := t.maxRowLength
-		if t.allowedRowLength != 0 && t.allowedRowLength < rowLength {
-			rowLength = t.allowedRowLength
+		if wm := t.style.Size.WidthMax; wm > 0 && wm < rowLength {
+			rowLength = wm
+		}
+		if wm := t.style.Size.WidthMin; wm > 0 && wm > rowLength {
+			rowLength = wm
 		}
 		if t.style.Options.DrawBorder {
-			lenBorder := rowLength - text.RuneCount(t.style.Box.TopLeft+t.style.Box.TopRight)
-			out.WriteString(t.style.Box.TopLeft)
-			out.WriteString(text.RepeatAndTrim(t.style.Box.MiddleHorizontal, lenBorder))
-			out.WriteString(t.style.Box.TopRight)
+			lenBorder := rowLength - text.StringWidthWithoutEscSequences(t.style.Box.TopLeft+t.style.Box.TopRight)
+			middleHorizontal := t.style.Box.middleHorizontal(separatorTypeTitleTop)
+			out.WriteString(colorsBorder.Sprint(t.style.Box.TopLeft))
+			out.WriteString(colorsBorder.Sprint(text.RepeatAndTrim(middleHorizontal, lenBorder)))
+			out.WriteString(colorsBorder.Sprint(t.style.Box.TopRight))
 		}
 
-		lenText := rowLength - text.RuneCount(t.style.Box.PaddingLeft+t.style.Box.PaddingRight)
+		lenText := rowLength - text.StringWidthWithoutEscSequences(t.style.Box.PaddingLeft+t.style.Box.PaddingRight)
 		if t.style.Options.DrawBorder {
-			lenText -= text.RuneCount(t.style.Box.Left + t.style.Box.Right)
+			lenText -= text.StringWidthWithoutEscSequences(t.style.Box.Left + t.style.Box.Right)
 		}
 		titleText := text.WrapText(t.title, lenText)
 		for _, titleLine := range strings.Split(titleText, "\n") {
-			titleLine = strings.TrimSpace(titleLine)
-			titleLine = t.style.Title.Format.Apply(titleLine)
-			titleLine = t.style.Title.Align.Apply(titleLine, lenText)
-			titleLine = t.style.Box.PaddingLeft + titleLine + t.style.Box.PaddingRight
-			titleLine = t.style.Title.Colors.Sprint(titleLine)
-
-			if out.Len() > 0 {
-				out.WriteRune('\n')
-			}
-			if t.style.Options.DrawBorder {
-				out.WriteString(t.style.Box.Left)
-			}
-			out.WriteString(titleLine)
-			if t.style.Options.DrawBorder {
-				out.WriteString(t.style.Box.Right)
-			}
+			t.renderTitleLine(out, lenText, titleLine, colors, colorsBorder)
 		}
 	}
+}
+
+func (t *Table) renderTitleLine(out *strings.Builder, lenText int, titleLine string, colors text.Colors, colorsBorder text.Colors) {
+	titleLine = strings.TrimSpace(titleLine)
+	titleLine = t.style.Title.Format.Apply(titleLine)
+	titleLine = t.style.Title.Align.Apply(titleLine, lenText)
+	titleLine = t.style.Box.PaddingLeft + titleLine + t.style.Box.PaddingRight
+
+	if out.Len() > 0 {
+		out.WriteRune('\n')
+	}
+	if t.style.Options.DrawBorder {
+		out.WriteString(colorsBorder.Sprint(t.style.Box.Left))
+	}
+	out.WriteString(colors.Sprint(titleLine))
+	if t.style.Options.DrawBorder {
+		out.WriteString(colorsBorder.Sprint(t.style.Box.Right))
+	}
+}
+
+func (t *Table) shouldSkipClippedLine(outLine *strings.Builder, hint renderHint) bool {
+	if !t.style.Options.SkipEmptyRowsWhenClipped || !hint.isRegularNonSeparatorRow() ||
+		hint.rowLineNumber <= 1 || hint.rowLineNumber <= hint.rowGroupSize {
+		return false
+	}
+	line := outLine.String()
+	if text.StringWidthWithoutEscSequences(line) <= t.style.Size.WidthMax {
+		return false
+	}
+
+	// Render the same structure without cell values. This distinguishes data
+	// such as "|" from separators without duplicating the layout calculations.
+	var emptyLine strings.Builder
+	t.renderLineContents(&emptyLine, nil, hint)
+	if text.StripEscape(line) == text.StripEscape(emptyLine.String()) {
+		return false // the line was already empty before clipping
+	}
+	var visible, emptyVisible strings.Builder
+	t.renderLineMergeOutputs(&visible, outLine)
+	t.renderLineMergeOutputs(&emptyVisible, &emptyLine)
+	// A wide character may leave an unused column at the clipping boundary.
+	unfinished := text.StripEscape(t.style.Box.UnfinishedRow)
+	content := func(line string) string {
+		return strings.TrimRightFunc(strings.TrimSuffix(text.StripEscape(line), unfinished), unicode.IsSpace)
+	}
+	return content(visible.String()) == content(emptyVisible.String())
 }
